@@ -34,6 +34,7 @@ export class PrometheusExporter implements MetricExporter {
     endpoint: '/metrics',
     prefix: '',
     appendTimestamp: true,
+    timeWindow: -1
   };
 
   private readonly _host?: string;
@@ -42,6 +43,7 @@ export class PrometheusExporter implements MetricExporter {
   private readonly _server: Server;
   private readonly _prefix?: string;
   private readonly _appendTimestamp: boolean;
+  private readonly _timeWindow: number;
   private _serializer: PrometheusSerializer;
   private _batcher = new PrometheusLabelsBatcher();
 
@@ -68,10 +70,14 @@ export class PrometheusExporter implements MetricExporter {
       typeof config.appendTimestamp === 'boolean'
         ? config.appendTimestamp
         : PrometheusExporter.DEFAULT_OPTIONS.appendTimestamp;
+    this._timeWindow = config.timeWindow ||
+      Number(process.env.OTEL_EXPORTER_PROMETHEUS_WINDOW) ||
+      PrometheusExporter.DEFAULT_OPTIONS.timeWindow;
     this._server = createServer(this._requestHandler);
     this._serializer = new PrometheusSerializer(
       this._prefix,
-      this._appendTimestamp
+      this._appendTimestamp,
+      this._timeWindow
     );
 
     this._endpoint = (

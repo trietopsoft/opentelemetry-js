@@ -235,6 +235,92 @@ describe('PrometheusSerializer', () => {
     });
   });
 
+
+  describe('skip serializing a stale metric record', () => {
+    describe('with SumAggregator', () => {
+      mockAggregator(SumAggregator);
+
+      it('should skip expired metric record with sum aggregator', async () => {
+        // Any positive value for time window will work since the original
+        // timestamp is fixed far in the past.
+        const serializer = new PrometheusSerializer(undefined, true, 1000);
+
+        const meter = new MeterProvider({
+          processor: new ExactProcessor(SumAggregator),
+        }).getMeter('test');
+        const counter = meter.createCounter('test_total') as CounterMetric;
+        counter.bind(labels).add(1);
+
+        const records = await counter.getMetricRecord();
+        const record = records[0];
+
+        const result = serializer.serializeRecord(
+          record.descriptor.name,
+          record
+        );
+        assert.strictEqual(
+          result,
+          ''
+        );
+      });
+    });
+  });
+
+  describe('serialize a current metric record', () => {
+    describe('with SumAggregator', () => {
+      it('should write current metric record with sum aggregator', async () => {
+        // Large time window here to ensure result will be in the window
+        const timeWindow = 600000;
+        const serializer = new PrometheusSerializer(undefined, true, timeWindow);
+
+        const meter = new MeterProvider({
+          processor: new ExactProcessor(SumAggregator),
+        }).getMeter('test');
+        const counter = meter.createCounter('test_total') as CounterMetric;
+        counter.bind(labels).add(1);
+        const referenceTimestamp = Date.now();
+
+        const records = await counter.getMetricRecord();
+        const record = records[0];
+
+        const result = serializer.serializeRecord(
+          record.descriptor.name,
+          record
+        );
+        const expected = 'test_total{foo1="bar1",foo2="bar2"} 1 ';
+        assert.ok(result.length > expected.length);
+        assert.ok(result.startsWith(expected));
+        const timestamp = Number(result.substring(expected.length));
+        assert.ok(timestamp > referenceTimestamp - timeWindow);
+        assert.ok(timestamp < referenceTimestamp + timeWindow);
+      });
+
+      it('should skip expired metric record with sum aggregator', async () => {
+        // Small time window here to test expiration
+        const timeWindow = 2;
+        const serializer = new PrometheusSerializer(undefined, true, timeWindow);
+
+        const meter = new MeterProvider({
+          processor: new ExactProcessor(SumAggregator),
+        }).getMeter('test');
+        const counter = meter.createCounter('test_total') as CounterMetric;
+        counter.bind(labels).add(1);
+
+        // Wait for window to expire
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        const records = await counter.getMetricRecord();
+        const record = records[0];
+
+        const result = serializer.serializeRecord(
+          record.descriptor.name,
+          record
+        );
+        assert.ok(result.length === 0);
+      });
+    });
+  });
+
   describe('serialize a checkpoint set', () => {
     describe('with SumAggregator', () => {
       mockAggregator(SumAggregator);

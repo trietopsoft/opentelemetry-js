@@ -32,6 +32,21 @@ export interface ExporterConfig {
   appendTimestamp?: boolean;
 
   /**
+   * Time window for metrics export in milliseconds. Only serialize values that have a timestamp
+   * within +/- x milliseconds of the reporting period. Enforced when 'appendTimestamp' is true.
+   * Negative values disable the time window check.
+   *
+   * Suggested time window is 10 minutes (600,000 ms)
+   *
+   * The Prometheus collector enforces a time-bounds check on collected metrics of 10 minutes
+   * before or after the current timestamp. Log messages will be generated on metrics that are
+   * produced outside of these bounds.
+   *
+   * @default -1 (disabled)
+   */
+  timeWindow?: number;
+
+  /**
    * Endpoint the metrics should be exposed at with preceding slash
    * @default '/metrics'
    */

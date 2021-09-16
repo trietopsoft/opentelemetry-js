@@ -157,15 +157,21 @@ function stringify(
   }\n`;
 }
 
+function inTimeWindow(timeStamp: number, referenceStamp: number, timeWindow: number) : boolean {
+  return timeWindow < 0 || (timeStamp >= referenceStamp - timeWindow) && (timeStamp <= referenceStamp + timeWindow);
+}
+
 export class PrometheusSerializer {
   private _prefix: string | undefined;
   private _appendTimestamp: boolean;
+  private _timeWindow: number;
 
-  constructor(prefix?: string, appendTimestamp = true) {
+  constructor(prefix?: string, appendTimestamp = true, timeWindow = -1) {
     if (prefix) {
       this._prefix = prefix + '_';
     }
     this._appendTimestamp = appendTimestamp;
+    this._timeWindow = timeWindow;
   }
 
   serialize(checkpointSet: PrometheusCheckpoint[]): string {
@@ -206,6 +212,7 @@ export class PrometheusSerializer {
 
   serializeRecord(name: string, record: MetricRecord): string {
     let results = '';
+    const refTime = Date.now();
 
     name = enforcePrometheusNamingConvention(
       name,
@@ -217,6 +224,9 @@ export class PrometheusSerializer {
       case AggregatorKind.LAST_VALUE: {
         const { value, timestamp: hrtime } = record.aggregator.toPoint();
         const timestamp = hrTimeToMilliseconds(hrtime);
+        if (this._appendTimestamp && !inTimeWindow(timestamp, refTime, this._timeWindow)) {
+          break;
+        }
         results += stringify(
           name,
           record.labels,
@@ -229,6 +239,9 @@ export class PrometheusSerializer {
       case AggregatorKind.HISTOGRAM: {
         const { value, timestamp: hrtime } = record.aggregator.toPoint();
         const timestamp = hrTimeToMilliseconds(hrtime);
+        if (this._appendTimestamp && !inTimeWindow(timestamp, refTime, this._timeWindow)) {
+          break;
+        }
         /** Histogram["bucket"] is not typed with `number` */
         for (const key of ['count', 'sum'] as ('count' | 'sum')[]) {
           results += stringify(
